@@ -3,7 +3,6 @@ import os
 from enum import IntEnum
 import time
 import webbrowser
-import objcrypt
 from cryptography.fernet import Fernet
 import stdiomask
 
