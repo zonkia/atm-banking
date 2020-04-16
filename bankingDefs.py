@@ -5,6 +5,9 @@ import time
 import webbrowser
 from cryptography.fernet import Fernet
 import stdiomask
+from pprint import pprint
+from datetime import datetime
+from os.path import isfile, join
 
 os.chdir(os.path.dirname(__file__))
 
@@ -18,13 +21,15 @@ class BankAccount:
 
 class FileSupport:
 
-    def save_file(self, dictToSave, fileName):
-        with open(str(fileName) + ".json", "w", encoding="UTF-8-sig") as fileJson:
+    def save_file(self, dictToSave, fileName, path=""):
+        filePath = "./" + path + str(fileName) + ".json"
+        with open(filePath, "w", encoding="UTF-8-sig") as fileJson:
             json.dump(dictToSave, fileJson,
                       ensure_ascii=False, indent=4)
 
-    def read_file(self, fileName):
-        with open(str(fileName) + ".json", "r", encoding="UTF-8-sig") as fileJson:
+    def read_file(self, fileName, path=""):
+        filePath = "./" + path + str(fileName) + ".json"
+        with open(filePath, "r", encoding="UTF-8-sig") as fileJson:
             return json.load(fileJson)
 
 
@@ -53,6 +58,53 @@ class Encryption:
                          for element in dictionary
                          }
         return decryptedDict
+
+    def decrypt_list(self, listName):
+        f = Encryption().f
+        decryptedList = [f.decrypt(bytes(element.strip("'").replace(
+            "b'", ""), encoding="UTF-8-sig")).decode(encoding="UTF-8-sig")
+            for element in listName
+        ]
+        return decryptedList
+
+
+class TransactionHistory:
+
+    def __init__(self):
+        self.onlyfiles = [f
+                          for f in os.listdir("./history")
+                          if isfile(join("./history", f))]
+        self.onlyFilesStrings = [files.replace(".json", "")
+                                 for files in self.onlyfiles
+                                 ]
+
+    def add_to_history(self, direction, transaction, session):
+        TransactionHistory.get_history(self, session)
+        historyDict = self.decryptedHistory
+        historyDict[str(datetime.now().strftime("%Y-%m-%d %H:%M"))] = direction + \
+            str(transaction)
+        # save encrypted history file
+        FileSupport.save_file(self, Encryption.encrypt_dict(
+            self, historyDict), self.fileName, path="history/")
+
+    def get_history(self, session):
+        historyObject = TransactionHistory()
+        self.decryptedList = Encryption.decrypt_list(
+            self, historyObject.onlyFilesStrings)
+        try:
+            self.idIndex = self.decryptedList.index(str(session.user.id))
+        except:
+            self.idIndex = self.decryptedList.index(str(session))
+        self.fileName = historyObject.onlyFilesStrings[self.idIndex]
+        encryptedHistory = FileSupport.read_file(
+            self, str(self.fileName), path="history/")
+        self.decryptedHistory = Encryption.decrypt_dict(self, encryptedHistory)
+        return self.decryptedHistory
+
+    def get_encrypted_id(self, userId):
+        encryptedIdDict = Encryption.encrypt_dict(
+            self, {str(userId): ""})
+        return list(encryptedIdDict.keys())[0]
 
 
 class LoginAccount:
@@ -127,7 +179,8 @@ class LoginAccount:
                 list(credentialsFile.keys())[-1]) + 1
         self.user = BankAccount(balance, newId)
         print("Your UserID is: ", self.user.id)
-        password = input("Please enter your password: ")
+        password = stdiomask.getpass(
+            prompt="Please enter your password: ", mask="*")
         credentialsFile[str(self.user.id)] = password
         FileSupport.save_file(self, Encryption.encrypt_dict(
             self, credentialsFile), "credentials")
@@ -138,6 +191,13 @@ class LoginAccount:
         accountsFile[str(self.user.id)] = str(balance)
         FileSupport.save_file(self, Encryption.encrypt_dict(
             self, accountsFile), "Accounts")
+        # create history of transactions
+        historyDict = {}
+        historyDict[str(datetime.now().strftime("%Y-%m-%d %H:%M"))] = "first deposit +" + \
+            str(balance)
+        # save encrypted history file
+        FileSupport.save_file(self, Encryption.encrypt_dict(
+            self, historyDict), TransactionHistory.get_encrypted_id(self, self.user.id), path="history/")
 
 
 class OperationsAccount:
@@ -151,20 +211,22 @@ class OperationsAccount:
               ", your current balance is:", session.user.balance)
 
         OperationsMenu = IntEnum(
-            "OperationsMenu", "Add Show Transfer Withdraw Logout ChangePassword")
+            "OperationsMenu", "Add Show History Transfer Withdraw Logout ChangePassword")
 
         while True:
             try:
                 operationChoice = int(input("""Please choose an option:
 1. Add funds
 2. Show balance
-3. Make transfer
-4. Withdraw
-5. Logout
-6. Change password
+3. Show history of transactions
+4. Make transfer
+5. Withdraw
+6. Logout
+7. Change password
 """))
                 if operationChoice == OperationsMenu.Add or \
                         operationChoice == OperationsMenu.Show or \
+                        operationChoice == OperationsMenu.History or \
                         operationChoice == OperationsMenu.Transfer or \
                         operationChoice == OperationsMenu.Withdraw or \
                         operationChoice == OperationsMenu.Logout or \
@@ -176,6 +238,10 @@ class OperationsAccount:
 
                     elif operationChoice == OperationsMenu.Show:
                         OperationsAccount.show_balance(self, session)
+                        continue
+
+                    elif operationChoice == OperationsMenu.History:
+                        OperationsAccount.show_history(self, session)
                         continue
 
                     elif operationChoice == OperationsMenu.Transfer:
@@ -218,6 +284,9 @@ class OperationsAccount:
         # save & encrypt file
         FileSupport.save_file(self, Encryption.encrypt_dict(
             self, accountsFile), "Accounts")
+        # save & encrypt history
+        TransactionHistory.add_to_history(
+            self, "funds added +", str(fundsToAdd), session)
         print("Transfer successful, your current balance:",
               session.user.balance)
         _ = input("Please press enter to return to menu")
@@ -227,6 +296,15 @@ class OperationsAccount:
         print("User No.", session.user.id,
               "your current balance is:", session.user.balance)
         _ = input("Press enter to return to menu")
+        print()
+
+    def show_history(self, session):
+        print("Your current transaction history:")
+        historyDict = TransactionHistory.get_history(self, session)
+        for entry in historyDict:
+            print(entry, ":", historyDict[entry])
+        print()
+        _ = input("Please press enter to return to menu: ")
         print()
 
     def transfer_funds(self, session):
@@ -259,6 +337,12 @@ class OperationsAccount:
             self, accountsFile), "Accounts")
         print("Transfer successful, your current balance:",
               session.user.balance)
+        # save & encrypt owner history file
+        TransactionHistory.add_to_history(
+            self, "outgoing transfer -", str(amountToTransfer), session)
+        # save & encrypt receiver history file
+        TransactionHistory.add_to_history(
+            self, "incoming transfer +", str(amountToTransfer), receiverId)
         _ = input("Press enter to return to menu")
         print()
 
@@ -293,11 +377,13 @@ class OperationsAccount:
                 end - start, 2), "seconds to collect you money")
             print("Your balance after withdrawal:",
                   session.user.balance)
-            _ = input(
-                "Please press enter to return to menu")
             # save & encrypt file
             FileSupport.save_file(self, Encryption.encrypt_dict(
                 self, accountsFile), "Accounts")
+            # save & encrypt history
+            TransactionHistory.add_to_history(
+                self, "withdrawal -", str(amountToWithdraw), session)
+            _ = input("Please press enter to return to menu")
             print()
         else:
             print()
@@ -308,9 +394,7 @@ class OperationsAccount:
             accountsFile = Encryption.decrypt_dict(
                 self, FileSupport.read_file(self, "Accounts"))
             accountsFile[str(session.user.id)] = str(session.user.balance)
-            # save & encrypt file
-            FileSupport.save_file(self, Encryption.encrypt_dict(
-                self, accountsFile), "Accounts")
+
             print("Your current balance:",
                   session.user.balance)
             _ = input(
