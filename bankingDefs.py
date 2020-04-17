@@ -81,7 +81,7 @@ class TransactionHistory:
     def add_to_history(self, direction, transaction, session):
         TransactionHistory.get_history(self, session)
         historyDict = self.decryptedHistory
-        historyDict[str(datetime.now().strftime("%Y-%m-%d %H:%M"))] = direction + \
+        historyDict[str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))] = direction + \
             str(transaction)
         # save encrypted history file
         FileSupport.save_file(self, Encryption.encrypt_dict(
@@ -193,7 +193,7 @@ class LoginAccount:
             self, accountsFile), "Accounts")
         # create history of transactions
         historyDict = {}
-        historyDict[str(datetime.now().strftime("%Y-%m-%d %H:%M"))] = "first deposit +" + \
+        historyDict[str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))] = "first deposit +" + \
             str(balance)
         # save encrypted history file
         FileSupport.save_file(self, Encryption.encrypt_dict(
@@ -280,7 +280,7 @@ class OperationsAccount:
         accountsFile = Encryption.decrypt_dict(
             self, FileSupport.read_file(self, "Accounts"))
         session.user.balance = float(session.user.balance) + fundsToAdd
-        accountsFile[session.user.id] = str(session.user.balance)
+        accountsFile[str(session.user.id)] = str(session.user.balance)
         # save & encrypt file
         FileSupport.save_file(self, Encryption.encrypt_dict(
             self, accountsFile), "Accounts")
@@ -339,10 +339,10 @@ class OperationsAccount:
               session.user.balance)
         # save & encrypt owner history file
         TransactionHistory.add_to_history(
-            self, "outgoing transfer -", str(amountToTransfer), session)
+            self, "outgoing transfer to userId: " + receiverId + " -", str(amountToTransfer), session)
         # save & encrypt receiver history file
         TransactionHistory.add_to_history(
-            self, "incoming transfer +", str(amountToTransfer), receiverId)
+            self, "incoming transfer from userId: " + str(session.user.id) + " +", str(amountToTransfer), receiverId)
         _ = input("Press enter to return to menu")
         print()
 
@@ -361,7 +361,7 @@ class OperationsAccount:
                 print("Wrong amount, please try again")
                 continue
         session.user.balance = float(session.user.balance) - amountToWithdraw
-        accountsFile[session.user.id] = str(session.user.balance)
+        accountsFile[str(session.user.id)] = str(session.user.balance)
         print(
             "Please collect your money from ATM within next 10 seconds")
         time.sleep(2)
@@ -430,7 +430,7 @@ class OperationsAccount:
                     else:
                         print(
                             "Passwords match. Your password has been successfully changed")
-                        credentialsFile[session.user.id] = newPassword1
+                        credentialsFile[str(session.user.id)] = newPassword1
                         # save & encrypt file
                         FileSupport.save_file(self, Encryption.encrypt_dict(
                             self, credentialsFile), "credentials")
